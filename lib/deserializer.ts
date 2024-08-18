@@ -17,7 +17,9 @@ const renderAttribute = (field: Field) => {
       // convert value to a string, only if kind is scalar and NOT a BigInt
       if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string') value = `"${value}"`;
       // if number, string or boolean we are ready to return!
-      if (valueIs(value, [Number, String, Boolean]) || kind === 'enum') return `@default(${value})`;
+      if (valueIs(value, [Number, String, Boolean]) || kind === 'enum') {
+        return `@default(${value})`;
+      }
       // haven't yet found where this is actually useful — will get back on that
       if (typeof value === 'object') {
         // @default(dbgenerated("next_id()")) render to be @default(dbgenerated(next_id())), it cause error
