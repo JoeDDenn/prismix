@@ -91,8 +91,10 @@ function mixModels(inputModels: Model[]) {
 
           // Assign defaults based on existing field if found
           if (!mutableField.hasDefaultValue && existingField.hasDefaultValue) {
-            mutableField.hasDefaultValue = true;
-            mutableField.default = existingField.default;
+            if (!mutableField.default) {
+              mutableField.hasDefaultValue = true;
+              mutableField.default = existingField.default;
+            }
           }
 
           // replace the field at this index with the new one
@@ -157,15 +159,19 @@ function getCustomAttributes(datamodel: string) {
       const doubleAtIndexRegex = new RegExp(/(?<index>@@index\(.*\))/);
       const doubleAtIndexes = pieces
         .reduce((ac: string[], field) => {
-          const item = field.match(doubleAtIndexRegex)?.groups?.index;
+          const match = doubleAtIndexRegex.exec(field);
+          const item = match?.groups?.index;
           return item ? [...ac, item] : ac;
         }, [])
         .filter((f) => f);
+
       const fieldsWithCustomAttributes = pieces
         .map((field) => {
-          const columnName = field.match(mapRegex)?.groups?.name;
-          const dbType = field.match(dbRegex)?.at(0);
-          const relationOnUpdate = field.match(relationOnUpdateRegex)?.groups?.op;
+          const mapMatch = mapRegex.exec(field);
+          const columnName = mapMatch?.groups?.name;
+          const dbType = dbRegex.exec(field)?.[0];
+          const relationOnUpdateMatch = relationOnUpdateRegex.exec(field);
+          const relationOnUpdate = relationOnUpdateMatch?.groups?.op;
           return [field.trim().split(' ')[0], { columnName, dbType, relationOnUpdate }] as [
             string,
             CustomAttributes['fields'][0]

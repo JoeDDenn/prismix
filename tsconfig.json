@@ -5,7 +5,7 @@
       "esnext.asynciterable"
     ],
     "module": "commonjs",
-    "target": "es2016",
+    "target": "es2018",
     "strict": true,
     "removeComments": true,
     "esModuleInterop": true,
