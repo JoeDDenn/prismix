@@ -9,7 +9,7 @@ const renderAttribute = (field) => {
     const { kind, type } = field;
     return {
         default: (value) => {
-            console.log(`@default(${value})`);
+            console.log(value);
             if (value == null || value === undefined)
                 return '';
             if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string')
@@ -18,7 +18,7 @@ const renderAttribute = (field) => {
                 return `@default(${value})`;
             }
             if (typeof value === 'object') {
-                if (value.name === 'uuid')
+                if (value.name === 'uuid' && value.args === '4')
                     return `@default(uuid())`;
                 if (value.name === 'dbgenerated')
                     return `@default(${value.name}("${value.args}"))`;

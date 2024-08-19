@@ -13,7 +13,7 @@ const renderAttribute = (field: Field) => {
   const { kind, type } = field;
   return {
     default: (value: any) => {
-      console.log(`@default(${value})`);
+      console.log(value);
       if (value == null || value === undefined) return '';
       // convert value to a string, only if kind is scalar and NOT a BigInt
       if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string') value = `"${value}"`;
@@ -24,12 +24,11 @@ const renderAttribute = (field: Field) => {
       // haven't yet found where this is actually useful — will get back on that
       if (typeof value === 'object') {
         // ignore any arguments and always output uuid()
-        if (value.name === 'uuid') return `@default(uuid())`;
+        if (value.name === 'uuid' && value.args === '4') return `@default(uuid())`;
         // @default(dbgenerated("next_id()")) render to be @default(dbgenerated(next_id())), it cause error
         if (value.name === 'dbgenerated') return `@default(${value.name}("${value.args}"))`;
         return `@default(${value.name}(${value.args}))`;
       }
-
       throw new Error(`Prismix: Unsupported field attribute ${value}`);
     },
     isId: (value: any) => (value ? '@id' : ''),
