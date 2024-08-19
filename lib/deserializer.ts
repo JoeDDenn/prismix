@@ -24,7 +24,7 @@ const renderAttribute = (field: Field) => {
       // haven't yet found where this is actually useful — will get back on that
       if (typeof value === 'object') {
         // ignore any arguments and always output uuid()
-        if (value.name === 'uuid' && value.args === '4') return `@default(uuid())`;
+        if (value.name === 'uuid(4)') return `@default(uuid())`;
         // @default(dbgenerated("next_id()")) render to be @default(dbgenerated(next_id())), it cause error
         if (value.name === 'dbgenerated') return `@default(${value.name}("${value.args}"))`;
         return `@default(${value.name}(${value.args}))`;

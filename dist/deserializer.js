@@ -18,7 +18,7 @@ const renderAttribute = (field) => {
                 return `@default(${value})`;
             }
             if (typeof value === 'object') {
-                if (value.name === 'uuid' && value.args === '4')
+                if (value.name === 'uuid(4)')
                     return `@default(uuid())`;
                 if (value.name === 'dbgenerated')
                     return `@default(${value.name}("${value.args}"))`;
