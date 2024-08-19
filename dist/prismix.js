@@ -1,18 +1,9 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.prismix = void 0;
+exports.prismix = prismix;
 const fs_1 = __importDefault(require("fs"));
 const util_1 = require("util");
 const path_1 = __importDefault(require("path"));
@@ -22,34 +13,41 @@ const glob_1 = require("glob");
 const utils_1 = require("./utils");
 const readFile = (0, util_1.promisify)(fs_1.default.readFile);
 const writeFile = (0, util_1.promisify)(fs_1.default.writeFile);
-function getSchema(schemaPath) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const schema = yield readFile(path_1.default.join(process.cwd(), schemaPath), {
-                encoding: 'utf-8'
+async function getSchema(schemaPath) {
+    try {
+        const schema = await readFile(path_1.default.join(process.cwd(), schemaPath), {
+            encoding: 'utf-8'
+        });
+        const dmmf = await (0, internals_1.getDMMF)({ datamodel: schema });
+        const customAttributes = getCustomAttributes(schema);
+        const models = dmmf.datamodel.models.map((model) => {
+            var _a;
+            return ({
+                ...model,
+                doubleAtIndexes: (_a = customAttributes[model.name]) === null || _a === void 0 ? void 0 : _a.doubleAtIndexes,
+                fields: model.fields.map((field) => {
+                    var _a, _b;
+                    const attributes = (_b = (_a = customAttributes[model.name]) === null || _a === void 0 ? void 0 : _a.fields[field.name]) !== null && _b !== void 0 ? _b : {};
+                    return {
+                        ...field,
+                        columnName: attributes.columnName,
+                        dbType: attributes.dbType,
+                        relationOnUpdate: attributes.relationOnUpdate
+                    };
+                })
             });
-            const dmmf = yield (0, internals_1.getDMMF)({ datamodel: schema });
-            const customAttributes = getCustomAttributes(schema);
-            const models = dmmf.datamodel.models.map((model) => {
-                var _a;
-                return (Object.assign(Object.assign({}, model), { doubleAtIndexes: (_a = customAttributes[model.name]) === null || _a === void 0 ? void 0 : _a.doubleAtIndexes, fields: model.fields.map((field) => {
-                        var _a, _b;
-                        const attributes = (_b = (_a = customAttributes[model.name]) === null || _a === void 0 ? void 0 : _a.fields[field.name]) !== null && _b !== void 0 ? _b : {};
-                        return Object.assign(Object.assign({}, field), { columnName: attributes.columnName, dbType: attributes.dbType, relationOnUpdate: attributes.relationOnUpdate });
-                    }) }));
-            });
-            const config = yield (0, internals_1.getConfig)({ datamodel: schema });
-            return {
-                models,
-                enums: dmmf.datamodel.enums,
-                datasources: config.datasources,
-                generators: config.generators
-            };
-        }
-        catch (e) {
-            console.error(`Prismix failed to parse schema located at "${schemaPath}". Did you attempt to reference to a model without creating an alias? Remember you must define a "blank" alias model with only the "@id" field in your extended schemas otherwise we can't parse your schema.`, e);
-        }
-    });
+        });
+        const config = await (0, internals_1.getConfig)({ datamodel: schema });
+        return {
+            models,
+            enums: dmmf.datamodel.enums,
+            datasources: config.datasources,
+            generators: config.generators
+        };
+    }
+    catch (e) {
+        console.error(`Prismix failed to parse schema located at "${schemaPath}". Did you attempt to reference to a model without creating an alias? Remember you must define a "blank" alias model with only the "@id" field in your extended schemas otherwise we can't parse your schema.`, e);
+    }
 }
 function mixModels(inputModels) {
     var _a, _b, _c, _d, _e, _f;
@@ -67,8 +65,10 @@ function mixModels(inputModels) {
                         mutableField.columnName = existingField.columnName;
                     }
                     if (!mutableField.hasDefaultValue && existingField.hasDefaultValue) {
-                        mutableField.hasDefaultValue = true;
-                        mutableField.default = existingField.default;
+                        if (!mutableField.default) {
+                            mutableField.hasDefaultValue = true;
+                            mutableField.default = existingField.default;
+                        }
                     }
                     existingModel.fields[existingFieldIndex] = mutableField;
                 }
@@ -118,58 +118,61 @@ function getCustomAttributes(datamodel) {
         const doubleAtIndexRegex = new RegExp(/(?<index>@@index\(.*\))/);
         const doubleAtIndexes = pieces
             .reduce((ac, field) => {
-            var _a, _b;
-            const item = (_b = (_a = field.match(doubleAtIndexRegex)) === null || _a === void 0 ? void 0 : _a.groups) === null || _b === void 0 ? void 0 : _b.index;
+            var _a;
+            const match = doubleAtIndexRegex.exec(field);
+            const item = (_a = match === null || match === void 0 ? void 0 : match.groups) === null || _a === void 0 ? void 0 : _a.index;
             return item ? [...ac, item] : ac;
         }, [])
             .filter((f) => f);
         const fieldsWithCustomAttributes = pieces
             .map((field) => {
-            var _a, _b, _c, _d, _e;
-            const columnName = (_b = (_a = field.match(mapRegex)) === null || _a === void 0 ? void 0 : _a.groups) === null || _b === void 0 ? void 0 : _b.name;
-            const dbType = (_c = field.match(dbRegex)) === null || _c === void 0 ? void 0 : _c.at(0);
-            const relationOnUpdate = (_e = (_d = field.match(relationOnUpdateRegex)) === null || _d === void 0 ? void 0 : _d.groups) === null || _e === void 0 ? void 0 : _e.op;
+            var _a, _b, _c;
+            const mapMatch = mapRegex.exec(field);
+            const columnName = (_a = mapMatch === null || mapMatch === void 0 ? void 0 : mapMatch.groups) === null || _a === void 0 ? void 0 : _a.name;
+            const dbType = (_b = dbRegex.exec(field)) === null || _b === void 0 ? void 0 : _b[0];
+            const relationOnUpdateMatch = relationOnUpdateRegex.exec(field);
+            const relationOnUpdate = (_c = relationOnUpdateMatch === null || relationOnUpdateMatch === void 0 ? void 0 : relationOnUpdateMatch.groups) === null || _c === void 0 ? void 0 : _c.op;
             return [field.trim().split(' ')[0], { columnName, dbType, relationOnUpdate }];
         })
             .filter((f) => { var _a, _b, _c; return ((_a = f[1]) === null || _a === void 0 ? void 0 : _a.columnName) || ((_b = f[1]) === null || _b === void 0 ? void 0 : _b.dbType) || ((_c = f[1]) === null || _c === void 0 ? void 0 : _c.relationOnUpdate); });
-        return Object.assign(Object.assign({}, modelDefinitions), { [modelName]: { fields: Object.fromEntries(fieldsWithCustomAttributes), doubleAtIndexes } });
+        return {
+            ...modelDefinitions,
+            [modelName]: { fields: Object.fromEntries(fieldsWithCustomAttributes), doubleAtIndexes }
+        };
     }, {});
 }
-function prismix(options) {
-    return __awaiter(this, void 0, void 0, function* () {
-        for (const mixer of options.mixers) {
-            const schemasToMix = [];
-            for (const input of mixer.input) {
-                for (const file of (0, glob_1.globSync)(input)) {
-                    const parsedSchema = yield getSchema(file);
-                    if (parsedSchema)
-                        schemasToMix.push(parsedSchema);
-                }
+async function prismix(options) {
+    for (const mixer of options.mixers) {
+        const schemasToMix = [];
+        for (const input of mixer.input) {
+            for (const file of (0, glob_1.globSync)(input)) {
+                const parsedSchema = await getSchema(file);
+                if (parsedSchema)
+                    schemasToMix.push(parsedSchema);
             }
-            let models = [];
-            for (const schema of schemasToMix)
-                models = [...models, ...schema.models];
-            models = mixModels(models);
-            let enums = [];
-            schemasToMix.forEach((schema) => !!schema.enums && (enums = [...enums, ...schema.enums]));
-            let datasources = [];
-            schemasToMix.forEach((schema) => schema.datasources.length > 0 &&
-                schema.datasources.filter((d) => d.url.value).length > 0 &&
-                (datasources = schema.datasources));
-            let generators = [];
-            schemasToMix.forEach((schema) => schema.generators.length > 0 && (generators = schema.generators));
-            let outputSchema = [
-                '// *** GENERATED BY PRISMIX :: DO NOT EDIT ***',
-                yield (0, deserializer_1.deserializeDatasources)(datasources),
-                yield (0, deserializer_1.deserializeGenerators)(generators),
-                yield (0, deserializer_1.deserializeModels)(models),
-                yield (0, deserializer_1.deserializeEnums)(enums)
-            ]
-                .filter((e) => e)
-                .join('\n');
-            yield writeFile(path_1.default.join(process.cwd(), mixer.output), outputSchema);
         }
-    });
+        let models = [];
+        for (const schema of schemasToMix)
+            models = [...models, ...schema.models];
+        models = mixModels(models);
+        let enums = [];
+        schemasToMix.forEach((schema) => !!schema.enums && (enums = [...enums, ...schema.enums]));
+        let datasources = [];
+        schemasToMix.forEach((schema) => schema.datasources.length > 0 &&
+            schema.datasources.filter((d) => d.url.value).length > 0 &&
+            (datasources = schema.datasources));
+        let generators = [];
+        schemasToMix.forEach((schema) => schema.generators.length > 0 && (generators = schema.generators));
+        let outputSchema = [
+            '// *** GENERATED BY PRISMIX [[JoeDDenn fork]]:: DO NOT EDIT ***',
+            await (0, deserializer_1.deserializeDatasources)(datasources),
+            await (0, deserializer_1.deserializeGenerators)(generators),
+            await (0, deserializer_1.deserializeModels)(models),
+            await (0, deserializer_1.deserializeEnums)(enums)
+        ]
+            .filter((e) => e)
+            .join('\n');
+        await writeFile(path_1.default.join(process.cwd(), mixer.output), outputSchema);
+    }
 }
-exports.prismix = prismix;
 //# sourceMappingURL=prismix.js.map
