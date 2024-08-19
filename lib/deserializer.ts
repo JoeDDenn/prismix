@@ -13,7 +13,7 @@ const renderAttribute = (field: Field) => {
   const { kind, type } = field;
   return {
     default: (value: any) => {
-      if (value == null || value == undefined) return '';
+      if (value == null || value === undefined) return '';
       // convert value to a string, only if kind is scalar and NOT a BigInt
       if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string') value = `"${value}"`;
       // if number, string or boolean we are ready to return!
@@ -22,6 +22,8 @@ const renderAttribute = (field: Field) => {
       }
       // haven't yet found where this is actually useful — will get back on that
       if (typeof value === 'object') {
+        // ignore any arguments and always output uuid()
+        if (value.name === 'uuid') return `@default(uuid())`;
         // @default(dbgenerated("next_id()")) render to be @default(dbgenerated(next_id())), it cause error
         if (value.name === 'dbgenerated') return `@default(${value.name}("${value.args}"))`;
         return `@default(${value.name}(${value.args}))`;
@@ -36,11 +38,11 @@ const renderAttribute = (field: Field) => {
     dbType: (value: any) => value ?? ''
   };
 };
-interface relation extends DMMF.Field {
+interface Relation extends DMMF.Field {
   relationOnUpdate?: string;
 }
 // Render a line of field attributes
-function renderAttributes(field: relation): string {
+function renderAttributes(field: Relation): string {
   const {
     relationFromFields,
     relationToFields,
@@ -50,23 +52,21 @@ function renderAttributes(field: relation): string {
     relationOnUpdate
   } = field;
   // handle attributes for scalar and enum fields
-  if (kind == 'scalar' || kind == 'enum') {
+  if (kind === 'scalar' || kind === 'enum') {
     return `${Object.keys(field)
       // if we have a method defined above with that property, call the method
-      .map(
-        (property) =>
-          renderAttribute(field)[property] && renderAttribute(field)[property](field[property])
-      )
+      .map((property) => renderAttribute(field)?.[property]?.(field[property]))
       // filter out empty strings
       .filter((x) => !!x)
       .join(' ')}`;
   }
   // handle relation syntax
   if (relationFromFields && kind === 'object') {
+    const onDelete = relationOnDelete ? `, onDelete: ${relationOnDelete}` : '';
+    const onUpdate = relationOnUpdate ? `, onUpdate: ${relationOnUpdate}` : '';
+
     return relationFromFields.length > 0
-      ? `@relation(name: "${relationName}", fields: [${relationFromFields}], references: [${relationToFields}]${
-          relationOnDelete ? `, onDelete: ${relationOnDelete}` : ''
-        }${relationOnUpdate ? `, onUpdate: ${relationOnUpdate}` : ''})`
+      ? `@relation(name: "${relationName}", fields: [${relationFromFields}], references: [${relationToFields}]${onDelete}${onUpdate})`
       : `@relation(name: "${relationName}")`;
   }
   return '';
@@ -78,11 +78,14 @@ function renderDocumentation(documentation?: string, tab?: boolean) {
 
   const documentationLines = documentation.split('\n');
 
-  return documentationLines.length == 1
-    ? `/// ${documentationLines[0]}\n${tab ? '\t' : ''}`
+  const tabChar = tab ? '\t' : '';
+  const newlineChar = tab ? '\n\t' : '\n';
+
+  return documentationLines.length === 1
+    ? `/// ${documentationLines[0]}\n${tabChar}`
     : documentationLines
-        .map((text, idx) => (idx == 0 ? `/// ${text}` : `\t/// ${text}`))
-        .join('\n') + (tab ? '\n\t' : '\n');
+        .map((text, idx) => (idx === 0 ? `/// ${text}` : `\t/// ${text}`))
+        .join('\n') + newlineChar;
 }
 
 // render all fields present on a model
@@ -90,15 +93,13 @@ function renderModelFields(fields: Readonly<DMMF.Field[]>): string[] {
   return fields.map((field) => {
     const { name, kind, type, documentation, isRequired, isList } = field;
 
-    if (kind == 'scalar')
-      return `${renderDocumentation(documentation, true)}${name} ${type}${
-        isList ? '[]' : isRequired ? '' : '?'
-      } ${renderAttributes(field)}`;
+    let suffix = '';
+    const scalarSuffix = isRequired ? '' : '?';
+    suffix = isList ? '[]' : scalarSuffix;
 
-    if (kind == 'object' || kind == 'enum')
-      return `${renderDocumentation(documentation, true)}${name} ${type}${
-        isList ? '[]' : isRequired ? '' : '?'
-      } ${renderAttributes(field)}`;
+    if (kind === 'scalar' || kind === 'object' || kind === 'enum') {
+      return `${renderDocumentation(documentation, true)}${name} ${type}${suffix} ${renderAttributes(field)}`;
+    }
 
     throw new Error(`Prismix: Unsupported field kind "${kind}"`);
   });
@@ -112,7 +113,7 @@ function renderIdFieldsOrPrimaryKey(idFields: Readonly<string[]>): string {
 function renderUniqueIndexes(uniqueIndexes: Model['uniqueIndexes']): string[] {
   return uniqueIndexes.length > 0
     ? uniqueIndexes.map(
-        ({ name, fields }) => `@@unique([${fields.join(', ')}]${name ? `, name: "${name}"` : ''})`
+        ({ name, fields }) => `@@unique([${fields.join(', ')}]${name ? ', name: ' + name : ''})`
       )
     : [];
 }
@@ -124,7 +125,7 @@ function renderUrl(envValue: EnvValue): string {
 
   return `url = ${value}`;
 }
-function renderProvider(provider: ConnectorType | string): string {
+function renderProvider(provider: ConnectorType): string {
   return `provider = "${provider}"`;
 }
 function renderOutput(path: string | null): string {
@@ -172,12 +173,12 @@ function deserializeDatasource(datasource: DataSource): string {
 }
 
 function deserializeGenerator(generator: GeneratorConfig): string {
-  const { binaryTargets, name, output, provider, previewFeatures, config } = generator;
+  const { name, output, provider, previewFeatures, config } = generator;
   return renderBlock('generator', name, [
-    renderProvider(provider.value || ''),
-    renderOutput(output?.value || null),
-    renderEnumFileName((config?.enumFileName as string) || null),
-    renderFileName((config?.fileName as string) || null),
+    renderProvider((provider.value as ConnectorType) ?? ''),
+    renderOutput(output?.value ?? null),
+    renderEnumFileName((config?.enumFileName as string) ?? null),
+    renderFileName((config?.fileName as string) ?? null),
     // renderBinaryTargets(binaryTargets as unknown as string[]),
     renderPreviewFeatures(previewFeatures)
   ]);
@@ -189,7 +190,7 @@ function deserializeEnum({ name, values, dbName, documentation }: DMMF.Datamodel
     if (name !== dbName && dbName) result += `@map("${dbName}")`;
     return result;
   });
-  return renderBlock('enum', name, [...outputValues, renderDbName(dbName || null)], documentation);
+  return renderBlock('enum', name, [...outputValues, renderDbName(dbName ?? null)], documentation);
 }
 
 // Exportable methods
