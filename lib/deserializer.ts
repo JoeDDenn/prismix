@@ -13,6 +13,7 @@ const renderAttribute = (field: Field) => {
   const { kind, type } = field;
   return {
     default: (value: any) => {
+      console.log(`@default(${value})`);
       if (value == null || value === undefined) return '';
       // convert value to a string, only if kind is scalar and NOT a BigInt
       if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string') value = `"${value}"`;
