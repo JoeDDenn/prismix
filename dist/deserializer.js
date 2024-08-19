@@ -9,7 +9,6 @@ const renderAttribute = (field) => {
     const { kind, type } = field;
     return {
         default: (value) => {
-            console.log(value);
             if (value == null || value === undefined)
                 return '';
             if (kind === 'scalar' && type !== 'BigInt' && typeof value == 'string')
